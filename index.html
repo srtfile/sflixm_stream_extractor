@@ -137,6 +137,20 @@
   .worker-status.ok   { color: var(--success); }
   .worker-status.warn { color: var(--warn); }
 
+  /* CF Worker required notice */
+  .worker-required {
+    background: rgba(224,157,60,0.08);
+    border: 1px solid rgba(224,157,60,0.28);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    color: var(--warn);
+    font-family: var(--mono);
+    line-height: 1.6;
+    margin-top: 4px;
+  }
+  .worker-required strong { color: #E0B96E; }
+
   .input-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -360,6 +374,7 @@
     margin-bottom: 20px;
     font-family: var(--mono);
     line-height: 1.6;
+    white-space: pre-line;
   }
   .error-banner.visible { display: block; }
 
@@ -411,7 +426,7 @@
     </svg>
   </div>
   <div class="logo-text">Stream<span>Ex</span></div>
-  <div class="header-badge">v2.1 · cf-worker</div>
+  <div class="header-badge">v2.2 · cf-worker</div>
 </header>
 
 <main>
@@ -431,8 +446,13 @@
     </div>
     <div class="worker-hint">
       Deploy <code>worker.js</code> to <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Workers</a> (free tier) and paste the <code>*.workers.dev</code> URL above.
-      Falls back to public CORS proxies if left empty.
       <span class="worker-status" id="worker-status"></span>
+    </div>
+    <div class="worker-required" id="worker-required">
+      <strong>⚠ CF Worker required for stream extraction.</strong>
+      The final play endpoint on <code>sflix.film</code> blocks all public CORS proxies —
+      only the CF Worker (which spoofs Origin/Referer) can reach it.
+      corsproxy.io is kept as a fallback for metadata only.
     </div>
   </div>
 
@@ -501,38 +521,23 @@ const H5    = "https://h5-api.aoneroom.com";
 const NN    = "https://netnaija.film";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  PROXY CONFIG — CF Worker is inserted first if user supplies a URL
+//  PROXY CONFIG
+//  • CF Worker = primary (required for sflix.film play endpoint)
+//  • corsproxy.io = fallback for metadata/search only
+//  Public proxies other than corsproxy.io have been removed — they don't
+//  support POST or get blocked by sflix.film and add noise to the log.
 // ─────────────────────────────────────────────────────────────────────────────
 const FALLBACK_PROXIES = [
   {
     name: "corsproxy.io",
     wrap: url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     supportsPost: true,
-  },
-  {
-    name: "allorigins",
-    wrap: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    supportsPost: false,
-  },
-  {
-    name: "cors.sh",
-    wrap: url => `https://proxy.cors.sh/${url}`,
-    supportsPost: true,
-    extraHeaders: { "x-cors-api-key": "temp_" },
-  },
-  {
-    name: "thingproxy",
-    wrap: url => `https://thingproxy.freeboard.io/fetch/${url}`,
-    supportsPost: true,
-  },
-  {
-    name: "8x8.pw",
-    wrap: url => `https://corsproxy.8x8.pw/?${encodeURIComponent(url)}`,
-    supportsPost: true,
+    // corsproxy.io works for TMDB/OMDb/NN search but is blocked by sflix.film
+    blockedHosts: ["sflix.film"],
   },
 ];
 
-let PROXIES = [...FALLBACK_PROXIES];
+let PROXIES        = [...FALLBACK_PROXIES];
 let activeProxyIdx = 0;
 let proxyPillEls   = [];
 
@@ -549,6 +554,7 @@ function rebuildProxies() {
         wrap: url => `${wUrl}/?url=${encodeURIComponent(url)}`,
         supportsPost: true,
         isCfWorker: true,
+        blockedHosts: [],   // CF Worker handles all hosts
       },
       ...FALLBACK_PROXIES,
     ];
@@ -557,15 +563,28 @@ function rebuildProxies() {
   }
 }
 
-// Update the hint badge next to the worker URL input
-document.getElementById("worker-url-input").addEventListener("input", () => {
+// Update hint badge next to worker URL input
+const workerInput    = document.getElementById("worker-url-input");
+const workerRequired = document.getElementById("worker-required");
+
+workerInput.addEventListener("input", () => {
   const wUrl = getWorkerUrl();
   const st   = document.getElementById("worker-status");
-  if (!wUrl) { st.textContent = ""; st.className = "worker-status"; return; }
-  if (!wUrl.startsWith("https://")) {
-    st.textContent = " ✗ must start with https://"; st.className = "worker-status warn"; return;
+  if (!wUrl) {
+    st.textContent = "";
+    st.className   = "worker-status";
+    workerRequired.style.display = "";
+    return;
   }
-  st.textContent = " ✓ will use as primary proxy"; st.className = "worker-status ok";
+  if (!wUrl.startsWith("https://")) {
+    st.textContent = " ✗ must start with https://";
+    st.className   = "worker-status warn";
+    workerRequired.style.display = "";
+    return;
+  }
+  st.textContent = " ✓ CF Worker active — stream extraction enabled";
+  st.className   = "worker-status ok";
+  workerRequired.style.display = "none";
 });
 
 function buildProxyUI() {
@@ -573,7 +592,7 @@ function buildProxyUI() {
   strip.innerHTML = '<span style="color:var(--muted);font-size:0.7rem;margin-right:4px;">PROXY</span>';
   proxyPillEls = [];
   for (const [i, p] of PROXIES.entries()) {
-    const pill = document.createElement("span");
+    const pill   = document.createElement("span");
     pill.className = "proxy-pill" + (i === activeProxyIdx ? " active" : "");
     pill.textContent = p.name;
     pill.id = `proxy-pill-${i}`;
@@ -591,10 +610,17 @@ function markProxy(idx, state) {
   }
 }
 
-// Core fetch-with-proxy-fallback
+// ─────────────────────────────────────────────────────────────────────────────
+//  CORE FETCH WITH PROXY FALLBACK
+//  targetUrl is inspected so we can skip proxies that block the host.
+// ─────────────────────────────────────────────────────────────────────────────
 async function proxiedFetch(url, options = {}) {
-  const isPost = options.method && options.method.toUpperCase() === "POST";
-  let lastErr  = null;
+  const isPost  = options.method && options.method.toUpperCase() === "POST";
+  let   lastErr = null;
+
+  // Determine target hostname for blocked-host checks
+  let targetHost = "";
+  try { targetHost = new URL(url).hostname; } catch (_) {}
 
   for (let offset = 0; offset < PROXIES.length; offset++) {
     const idx   = (activeProxyIdx + offset) % PROXIES.length;
@@ -602,6 +628,13 @@ async function proxiedFetch(url, options = {}) {
 
     if (isPost && !proxy.supportsPost) {
       appendLog(`  [proxy] ${proxy.name} skipped (no POST)`, "warn");
+      continue;
+    }
+
+    // Skip proxies that are known to block the target host
+    if (proxy.blockedHosts && proxy.blockedHosts.some(h => targetHost === h || targetHost.endsWith("." + h))) {
+      appendLog(`  [proxy] ${proxy.name} skipped (blocked host: ${targetHost})`, "warn");
+      markProxy(idx, "fail");
       continue;
     }
 
@@ -627,7 +660,16 @@ async function proxiedFetch(url, options = {}) {
       await delay(150);
     }
   }
-  throw new Error(`All ${PROXIES.length} proxies failed. Last error: ${lastErr?.message}`);
+
+  // All proxies exhausted — provide a useful error distinguishing play vs other calls
+  const isPlayEndpoint = url.includes("/subject/play");
+  if (isPlayEndpoint && !getWorkerUrl()) {
+    throw new Error(
+      "Stream fetch blocked — the sflix.film play endpoint requires the CF Worker.\n" +
+      "Deploy worker.js and paste your *.workers.dev URL above, then try again."
+    );
+  }
+  throw new Error(`All proxies failed. Last error: ${lastErr?.message}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -641,7 +683,7 @@ const extractBtn  = document.getElementById("extract-btn");
 
 function showTerminal() { terminal.classList.add("visible"); }
 function hideError()    { errorBanner.classList.remove("visible"); }
-function showError(msg) { errorBanner.innerHTML = "✗ " + escHtml(msg); errorBanner.classList.add("visible"); }
+function showError(msg) { errorBanner.textContent = "✗ " + msg; errorBanner.classList.add("visible"); }
 
 function clearLog() { logBody.innerHTML = '<span class="cursor"></span>'; }
 
@@ -667,7 +709,7 @@ async function getMeta(tmdbId) {
   appendLog(`Fetching TMDB metadata for ID ${tmdbId} …`);
   const tmdbUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`;
   const res = await proxiedFetch(tmdbUrl);
-  const d = await res.json();
+  const d   = await res.json();
   if (d.status_message) throw new Error("TMDB: " + d.status_message);
 
   const title   = d.title || d.original_title;
@@ -733,16 +775,16 @@ function titleScore(a, b) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function nnSearch(title, year, runtime) {
   appendLog(`Searching NetNaija for "${title}" (${year}) …`);
-  const apiUrl = `${H5}/wefeed-h5api-bff/subject/search`;
+  const apiUrl  = `${H5}/wefeed-h5api-bff/subject/search`;
 
   for (let page = 1; page <= 6; page++) {
     const bodyStr = JSON.stringify({ keyword: title, page, perPage: 24, subjectType: 0 });
     const headers = {
-      "Content-Type": "application/json",
-      "Accept":        "application/json",
-      "Authorization": `Bearer ${NN_TOKEN}`,
-      "Origin":        NN,
-      "Referer":       `${NN}/`,
+      "Content-Type":   "application/json",
+      "Accept":         "application/json",
+      "Authorization":  `Bearer ${NN_TOKEN}`,
+      "Origin":         NN,
+      "Referer":        `${NN}/`,
       "x-request-lang": "en",
       "x-client-info":  JSON.stringify({ timezone: "UTC" }),
     };
@@ -783,14 +825,14 @@ async function nnSearch(title, year, runtime) {
 async function getStream(detailPath, subjectId) {
   appendLog(`Hitting detail endpoint → ${detailPath}`);
 
-  const detailUrl = `${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(detailPath)}`;
+  const detailUrl  = `${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(detailPath)}`;
   const detailResp = await proxiedFetch(detailUrl, {
     headers: {
-      "Accept":   "application/json",
-      "Origin":   SFLIX,
-      "Referer":  `${SFLIX}/spa/videoPlayPage/movies/${detailPath}`,
-      "x-client-info": JSON.stringify({ timezone: "Asia/Dhaka" }),
-      "x-source": "",
+      "Accept":         "application/json",
+      "Origin":         SFLIX,
+      "Referer":        `${SFLIX}/spa/videoPlayPage/movies/${detailPath}`,
+      "x-client-info":  JSON.stringify({ timezone: "Asia/Dhaka" }),
+      "x-source":       "",
     }
   });
   const detailData = await detailResp.json();
@@ -830,10 +872,18 @@ async function getStream(detailPath, subjectId) {
     detailPath: chosenPath, streamSignType:"1",
   });
 
-  // ── CRITICAL: play endpoint is on sflix.film, not h5-api ──────────────────
-  // Public proxies block this domain. The CF Worker handles it correctly by
-  // spoofing Origin/Referer to sflix.film itself.
+  // ── CRITICAL NOTE ──────────────────────────────────────────────────────────
+  // The play endpoint lives on sflix.film. Public CORS proxies (including
+  // corsproxy.io) are actively blocked by sflix.film — they return network
+  // errors or 403s. Only the CF Worker, which spoofs Origin/Referer to
+  // sflix.film itself, can reach this endpoint successfully.
+  // ──────────────────────────────────────────────────────────────────────────
   const playUrl = `${SFLIX}/wefeed-h5api-bff/subject/play?${playParams}`;
+
+  if (!getWorkerUrl()) {
+    appendLog("⚠ No CF Worker set — play endpoint will likely fail", "warn");
+    appendLog("  sflix.film blocks all public CORS proxies at this step", "warn");
+  }
 
   const playResp = await proxiedFetch(playUrl, {
     headers: {
@@ -850,8 +900,12 @@ async function getStream(detailPath, subjectId) {
   const streams  = playData?.data?.streams || [];
   if (!streams.length) throw new Error("No streams returned — movie may be VIP-locked or request quota reached");
 
-  const free = streams.filter(s => !s.vipLocked).length ? streams.filter(s => !s.vipLocked) : streams;
-  const best = free.reduce((a, b) => (parseInt(a.resolutions)||0) > (parseInt(b.resolutions)||0) ? a : b);
+  const free = streams.filter(s => !s.vipLocked).length
+    ? streams.filter(s => !s.vipLocked)
+    : streams;
+  const best = free.reduce((a, b) =>
+    (parseInt(a.resolutions)||0) > (parseInt(b.resolutions)||0) ? a : b
+  );
 
   appendLog(`${free.length} stream(s) found`, "ok");
   return { best, all: free };
@@ -865,7 +919,7 @@ function renderResult(meta, streamResult) {
   document.getElementById("r-sub").textContent =
     `${meta.runtime}min  ·  IMDb ${meta.rating ?? "N/A"}  ·  ${streamResult.all.length} stream${streamResult.all.length!==1?"s":""}`;
 
-  const list = document.getElementById("stream-list");
+  const list   = document.getElementById("stream-list");
   list.innerHTML = "";
   const sorted = [...streamResult.all].sort((a,b) => (parseInt(b.resolutions)||0) - (parseInt(a.resolutions)||0));
 
@@ -908,13 +962,17 @@ async function runExtract() {
   showTerminal();
   setLoading(true);
   activeProxyIdx = 0;
-  rebuildProxies();        // pick up any worker URL the user entered
+  rebuildProxies();
   buildProxyUI();
 
   try {
     appendLog("── StreamEx extraction started ──", "head");
-    if (getWorkerUrl()) appendLog(`CF Worker: ${getWorkerUrl()}`, "ok");
-    else appendLog("No CF Worker URL — using public fallbacks", "warn");
+    if (getWorkerUrl()) {
+      appendLog(`CF Worker: ${getWorkerUrl()}`, "ok");
+    } else {
+      appendLog("No CF Worker URL set", "warn");
+      appendLog("Metadata/search may work via corsproxy.io; stream fetch will fail", "warn");
+    }
 
     const meta = await getMeta(input);
     const hit  = await nnSearch(meta.title, meta.year, meta.runtime);
@@ -933,10 +991,13 @@ async function runExtract() {
     renderResult(meta, streamResult);
   } catch (err) {
     appendLog(err.message, "err");
-    showError(err.message +
-      (getWorkerUrl()
-        ? "\n\nCF Worker is set but still failed — check the worker is deployed correctly."
-        : "\n\nDeploy worker.js to Cloudflare Workers and paste the URL above to fix this."));
+    const noWorker = !getWorkerUrl();
+    showError(
+      err.message +
+      (noWorker
+        ? "\n\nFix: Deploy worker.js to Cloudflare Workers (free tier) and paste your *.workers.dev URL above.\nThe sflix.film play endpoint requires Origin/Referer spoofing that only the CF Worker provides."
+        : "\n\nCF Worker is set but still failed — check that worker.js is deployed and the URL is correct.")
+    );
   } finally {
     setLoading(false);
   }
