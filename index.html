@@ -1,83 +1,916 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Movie Stream API</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StreamEx — Movie Stream Extractor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0D0D0F;
+    --surface:   #13131A;
+    --card:      #1A1A24;
+    --border:    #2A2A3A;
+    --gold:      #C8A96E;
+    --gold-dim:  #8A7249;
+    --text:      #E8E8EC;
+    --muted:     #7A7A8E;
+    --success:   #5CBA82;
+    --error:     #E05C6A;
+    --warn:      #E09D3C;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Space Grotesk', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
   body {
-    background: #0a0a0f;
-    color: #e2e8f0;
-    font-family: 'Courier New', monospace;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 2rem;
   }
-  .card {
-    max-width: 600px;
+
+  /* ── Grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Header ── */
+  header {
     width: 100%;
-    border: 1px solid #2a2a3a;
-    border-radius: 10px;
-    padding: 2.5rem;
-    background: #111118;
+    padding: 28px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 1;
   }
-  h1 { font-size: 1.4rem; color: #818cf8; margin-bottom: 0.5rem; }
-  p  { color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.6; }
-  .endpoint {
-    background: #0d0d14;
-    border: 1px solid #1e1e2e;
-    border-radius: 6px;
-    padding: 1rem 1.2rem;
-    color: #38bdf8;
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
+
+  .logo-reel {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    position: relative;
   }
-  label { display: block; color: #94a3b8; font-size: 0.78rem; margin-bottom: 0.3rem; }
-  input {
+  .logo-reel svg { animation: reel-spin 4s linear infinite; }
+  @keyframes reel-spin { to { transform: rotate(360deg); } }
+
+  .logo-text {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .logo-text span { color: var(--gold); }
+
+  .header-badge {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Main ── */
+  main {
     width: 100%;
-    background: #0d0d14;
-    border: 1px solid #2a2a3a;
-    border-radius: 5px;
-    color: #e2e8f0;
-    font-family: inherit;
+    max-width: 760px;
+    padding: 48px 24px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    margin-bottom: 40px;
+  }
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--gold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--text);
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--gold);
+  }
+  .hero p {
+    margin-top: 10px;
     font-size: 0.9rem;
-    padding: 0.6rem 0.9rem;
-    margin-bottom: 0.8rem;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 480px;
+  }
+
+  /* ── Input card ── */
+  .input-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .input-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.95rem;
     outline: none;
+    transition: border-color 0.2s;
   }
-  input:focus { border-color: #818cf8; }
-  button {
-    background: #818cf8;
-    color: #0a0a0f;
+  input[type="text"]:focus { border-color: var(--gold); }
+  input[type="text"]::placeholder { color: var(--muted); }
+
+  /* ── Button ── */
+  .btn-extract {
+    background: var(--gold);
+    color: #0D0D0F;
     border: none;
-    border-radius: 5px;
-    padding: 0.6rem 1.4rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: bold;
+    border-radius: 8px;
+    padding: 11px 22px;
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
   }
-  button:hover { background: #a5b4fc; }
+  .btn-extract:hover { background: #D9B97E; }
+  .btn-extract:active { transform: scale(0.97); }
+  .btn-extract:disabled {
+    background: var(--gold-dim);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* spinner inside button */
+  .spin {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(0,0,0,0.3);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .btn-extract.loading .spin { display: block; }
+  .btn-extract.loading .btn-icon { display: none; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Terminal log ── */
+  .terminal {
+    background: #09090C;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    display: none;
+  }
+  .terminal.visible { display: block; }
+
+  .terminal-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .t-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .t-dot:nth-child(1) { background: #E05C5C; }
+  .t-dot:nth-child(2) { background: #E0A05C; }
+  .t-dot:nth-child(3) { background: #5CBA82; }
+
+  .terminal-title {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-left: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  .terminal-body {
+    padding: 18px 20px;
+    min-height: 140px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.8;
+  }
+  .terminal-body::-webkit-scrollbar { width: 4px; }
+  .terminal-body::-webkit-scrollbar-track { background: transparent; }
+  .terminal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .log-line { display: flex; gap: 10px; opacity: 0; animation: fadein 0.15s forwards; }
+  @keyframes fadein { to { opacity: 1; } }
+
+  .log-line.info  .log-prefix { color: var(--muted); }
+  .log-line.ok    .log-prefix { color: var(--success); }
+  .log-line.err   .log-prefix { color: var(--error); }
+  .log-line.warn  .log-prefix { color: var(--warn); }
+  .log-line.head  .log-prefix { color: var(--gold); }
+
+  .log-prefix { flex-shrink: 0; user-select: none; }
+  .log-msg { color: var(--text); word-break: break-all; }
+  .log-line.err .log-msg { color: var(--error); }
+  .log-line.head .log-msg { color: var(--gold); font-weight: 500; }
+
+  /* blinking cursor */
+  .cursor {
+    display: inline-block;
+    width: 7px; height: 14px;
+    background: var(--gold);
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+    margin-left: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Result card ── */
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    display: none;
+  }
+  .result-card.visible { display: block; }
+
+  .result-header {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .result-meta { display: flex; flex-direction: column; gap: 4px; }
+  .result-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .result-sub {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .badge-gold { background: rgba(200,169,110,0.15); color: var(--gold); border: 1px solid rgba(200,169,110,0.3); }
+  .badge-green { background: rgba(92,186,130,0.12); color: var(--success); border: 1px solid rgba(92,186,130,0.25); }
+
+  /* ── Stream list ── */
+  .stream-list { padding: 16px 22px; display: flex; flex-direction: column; gap: 10px; }
+
+  .stream-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.15s;
+  }
+  .stream-item.best { border-color: var(--gold-dim); }
+  .stream-item:hover { border-color: var(--gold); }
+
+  .res-badge {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #0D0D0F;
+    background: var(--gold);
+    padding: 4px 9px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    min-width: 52px;
+    text-align: center;
+  }
+  .stream-item:not(.best) .res-badge {
+    background: var(--card);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .stream-url {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    user-select: all;
+  }
+
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    padding: 5px 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .copy-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .copy-btn.copied { border-color: var(--success); color: var(--success); }
+
+  /* ── Error banner ── */
+  .error-banner {
+    display: none;
+    background: rgba(224,92,106,0.08);
+    border: 1px solid rgba(224,92,106,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--error);
+    font-size: 0.85rem;
+    margin-bottom: 20px;
+    font-family: var(--mono);
+  }
+  .error-banner.visible { display: block; }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 22px 40px;
+    width: 100%;
+    font-size: 0.75rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 1;
+  }
+  footer a { color: var(--gold-dim); text-decoration: none; }
+  footer a:hover { color: var(--gold); }
+
+  /* ── Responsive ── */
+  @media (max-width: 560px) {
+    header { padding: 20px; }
+    main { padding: 32px 16px 60px; }
+    .input-row { flex-direction: column; }
+    .btn-extract { width: 100%; justify-content: center; }
+    footer { flex-direction: column; gap: 6px; align-items: flex-start; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .logo-reel svg, .spin, .cursor { animation: none; }
+    .log-line { opacity: 1; }
+  }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>🎬 Movie Stream API</h1>
-  <p>Returns direct MP4 stream URLs for any movie using its TMDB ID.</p>
-  <label>Endpoint</label>
-  <div class="endpoint">/movie/[tmdb_id]</div>
-  <label>Try it — enter a TMDB ID</label>
-  <input id="tid" type="text" placeholder="e.g. 218  (The Terminator)" value="218">
-  <button onclick="go()">Fetch Streams →</button>
-</div>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo-reel">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="14" cy="14" r="12" stroke="#C8A96E" stroke-width="1.5"/>
+      <circle cx="14" cy="14" r="4" fill="#C8A96E" opacity="0.6"/>
+      <circle cx="14" cy="6"  r="2.2" fill="#C8A96E"/>
+      <circle cx="14" cy="22" r="2.2" fill="#C8A96E"/>
+      <circle cx="6"  cy="14" r="2.2" fill="#C8A96E"/>
+      <circle cx="22" cy="14" r="2.2" fill="#C8A96E"/>
+      <circle cx="8.5"  cy="8.5"  r="1.6" fill="#C8A96E" opacity="0.7"/>
+      <circle cx="19.5" cy="8.5"  r="1.6" fill="#C8A96E" opacity="0.7"/>
+      <circle cx="8.5"  cy="19.5" r="1.6" fill="#C8A96E" opacity="0.7"/>
+      <circle cx="19.5" cy="19.5" r="1.6" fill="#C8A96E" opacity="0.7"/>
+    </svg>
+  </div>
+  <div class="logo-text">Stream<span>Ex</span></div>
+  <div class="header-badge">v1.0 · TMDB + NetNaija</div>
+</header>
+
+<!-- ── Main ── -->
+<main>
+
+  <div class="hero">
+    <div class="hero-eyebrow">// movie stream extractor</div>
+    <h1>Extract <em>direct streams</em><br>from any TMDB movie</h1>
+    <p>Paste a TMDB movie ID to resolve metadata, search NetNaija, and pull direct video stream URLs — no scraping, no proxies.</p>
+  </div>
+
+  <div class="input-card">
+    <div class="input-row">
+      <div class="input-group">
+        <label for="tmdb-input">TMDB Movie ID</label>
+        <input type="text" id="tmdb-input" placeholder="e.g. 218, 550, 27205" maxlength="12" autocomplete="off" spellcheck="false" />
+      </div>
+      <button class="btn-extract" id="extract-btn" onclick="runExtract()">
+        <span class="btn-icon">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M2 7.5L7.5 2L13 7.5M7.5 2V13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="spin"></span>
+        Extract
+      </button>
+    </div>
+  </div>
+
+  <div class="error-banner" id="error-banner"></div>
+
+  <!-- Terminal -->
+  <div class="terminal" id="terminal">
+    <div class="terminal-bar">
+      <div class="t-dot"></div>
+      <div class="t-dot"></div>
+      <div class="t-dot"></div>
+      <span class="terminal-title">streamex — extraction log</span>
+    </div>
+    <div class="terminal-body" id="log-body">
+      <span class="cursor"></span>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-card" id="result-card">
+    <div class="result-header">
+      <div class="result-meta">
+        <div class="result-title" id="r-title">—</div>
+        <div class="result-sub" id="r-sub">—</div>
+      </div>
+      <div id="r-badge" class="badge badge-green">✓ extracted</div>
+    </div>
+    <div class="stream-list" id="stream-list"></div>
+  </div>
+
+</main>
+
+<footer>
+  <span>StreamEx · static frontend · no server required</span>
+  <span>powered by <a href="https://www.themoviedb.org" target="_blank">TMDB</a> · <a href="https://www.omdbapi.com" target="_blank">OMDb</a> · NetNaija</span>
+</footer>
+
 <script>
-function go() {
-  const id = document.getElementById("tid").value.trim();
-  if (id) location.href = "/movie/" + id;
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const TMDB_KEY = "6fad3f86b8452ee232deb7977d7dcf58";
+const OMDB_KEY = "2cd51b5b";
+const NN_TOKEN = [
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  ".eyJ1aWQiOjcwNjg3NzgxMzIyMzY4MjE3NDQsImF0cCI6MywiZXh0IjoiMTc4NTc1NzQxNCIsImV4cCI6MTc5MzUzMzQxNCwiaWF0IjoxNzg1NzU3MTE0fQ",
+  ".2cQ9H7rY1HOTmbjcXNHoULguJ-YQfZjjsZ3YYI4jdSk"
+].join("");
+const SFLIX = "https://sflix.film";
+const H5    = "https://h5-api.aoneroom.com";
+const NN    = "https://netnaija.film";
+
+// CORS proxy — needed for browser cross-origin requests
+// Using allorigins as a fallback proxy
+const PROXY = "https://api.allorigins.win/raw?url=";
+
+function proxied(url) { return PROXY + encodeURIComponent(url); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  UI HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+const logBody    = document.getElementById("log-body");
+const terminal   = document.getElementById("terminal");
+const resultCard = document.getElementById("result-card");
+const errorBanner= document.getElementById("error-banner");
+const extractBtn = document.getElementById("extract-btn");
+
+function showTerminal() { terminal.classList.add("visible"); }
+function hideError()    { errorBanner.classList.remove("visible"); }
+function showError(msg) {
+  errorBanner.textContent = "✗  " + msg;
+  errorBanner.classList.add("visible");
 }
-document.getElementById("tid").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+
+function clearLog() {
+  logBody.innerHTML = '<span class="cursor"></span>';
+}
+
+function appendLog(msg, type = "info") {
+  const cursor = logBody.querySelector(".cursor");
+  const line = document.createElement("div");
+  line.className = "log-line " + type;
+
+  const prefixMap = { info: "›", ok: "✓", err: "✗", warn: "!", head: "#" };
+  line.innerHTML = `<span class="log-prefix">${prefixMap[type] || "›"}</span><span class="log-msg">${escHtml(msg)}</span>`;
+
+  if (cursor) logBody.insertBefore(line, cursor);
+  else logBody.appendChild(line);
+  logBody.scrollTop = logBody.scrollHeight;
+}
+
+function setLoading(on) {
+  extractBtn.disabled = on;
+  extractBtn.classList.toggle("loading", on);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  METADATA
+// ─────────────────────────────────────────────────────────────────────────────
+async function getMeta(tmdbId) {
+  appendLog(`Fetching TMDB metadata for ID ${tmdbId} …`);
+
+  const tmdbUrl = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`;
+  let res = await fetch(proxied(tmdbUrl));
+  if (!res.ok) throw new Error(`TMDB request failed (HTTP ${res.status})`);
+  const d = await res.json();
+  if (d.status_message) throw new Error("TMDB: " + d.status_message);
+
+  const title   = d.title || d.original_title;
+  const year    = (d.release_date || "").slice(0, 4);
+  const runtime = d.runtime || 0;
+  const imdbId  = d.imdb_id || "";
+  let rating    = null;
+
+  appendLog(`Found: "${title}" (${year}) · ${runtime} min`, "ok");
+
+  if (imdbId) {
+    const omdbUrl = `https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_KEY}`;
+    try {
+      const or = await fetch(proxied(omdbUrl));
+      const od = await or.json();
+      if (od.Response === "True" && od.imdbRating && od.imdbRating !== "N/A")
+        rating = parseFloat(od.imdbRating);
+      appendLog(`IMDb: ${imdbId} · rating ${rating ?? "N/A"}`);
+    } catch (_) { appendLog("OMDb lookup skipped", "warn"); }
+  }
+
+  return { title, year, runtime, rating, imdbId };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FUZZY TITLE MATCHING (port of Python difflib)
+// ─────────────────────────────────────────────────────────────────────────────
+function norm(t) {
+  return t.toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+
+function lcsRatio(a, b) {
+  // O(n*m) LCS length → ratio like Python SequenceMatcher
+  const m = a.length, n = b.length;
+  if (!m || !n) return 0;
+  const dp = new Uint16Array((m + 1) * (n + 1));
+  let best = 0;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) dp[i*(n+1)+j] = dp[(i-1)*(n+1)+(j-1)] + 1;
+      else dp[i*(n+1)+j] = Math.max(dp[(i-1)*(n+1)+j], dp[i*(n+1)+(j-1)]);
+    }
+  }
+  return (2 * dp[m*(n+1)+n]) / (m + n);
+}
+
+function titleScore(a, b) {
+  const na = norm(a);
+  const nb = norm(b.replace(/\[.*?\]|\(.*?\)/g, ""));
+  if (na === nb) return 100;
+  const sortedA = na.split(" ").sort().join(" ");
+  const sortedB = nb.split(" ").sort().join(" ");
+  const score = Math.max(
+    lcsRatio(na, nb),
+    lcsRatio(sortedA, sortedB),
+    na.length > 3 && nb.includes(na) ? 0.92 : 0,
+    nb.startsWith(na) ? 0.95 : 0,
+  );
+  return Math.round(score * 100);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  NETNAIJA SEARCH
+// ─────────────────────────────────────────────────────────────────────────────
+async function nnSearch(title, year, runtime) {
+  appendLog(`Searching NetNaija for "${title}" (${year}) …`);
+
+  for (let page = 1; page <= 6; page++) {
+    const body = JSON.stringify({ keyword: title, page, perPage: 24, subjectType: 0 });
+    const apiUrl = `${H5}/wefeed-h5api-bff/subject/search`;
+
+    let resp;
+    try {
+      resp = await fetch(proxied(apiUrl), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": `Bearer ${NN_TOKEN}`,
+          "Origin": NN,
+          "Referer": `${NN}/`,
+          "x-request-lang": "en",
+          "x-client-info": JSON.stringify({ timezone: "UTC" }),
+        },
+        body,
+      });
+    } catch (e) {
+      // CORS blocked — try proxy
+      const proxyResp = await fetch(proxied(apiUrl), { method: "GET" });
+      // fallback: can't POST through allorigins GET proxy, notify user
+      throw new Error("NetNaija search blocked by CORS. Deploy behind a CORS proxy or run locally.");
+    }
+
+    if (!resp.ok) throw new Error(`NetNaija search HTTP ${resp.status}`);
+    const json = await resp.json();
+    const items = (json?.data?.items) || [];
+
+    appendLog(`  Page ${page}: ${items.length} results`);
+
+    for (const it of items) {
+      if (!it.detailPath) continue;
+      const itYear = (it.releaseDate || "").slice(0, 4);
+      if (itYear && itYear !== year) continue;
+      const rt = Math.round((it.duration || 0) / 60);
+      if (rt && Math.abs(runtime - rt) > 2) continue;
+      const score = titleScore(title, it.title || "");
+      if (score < 70) continue;
+      appendLog(`  Match: "${it.title}" score=${score} runtime=${rt}min`, "ok");
+      return it;
+    }
+
+    if (!json?.data?.pager?.hasMore) break;
+    await delay(200);
+  }
+
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  STREAM EXTRACTION
+// ─────────────────────────────────────────────────────────────────────────────
+async function getStream(detailPath, subjectId) {
+  appendLog(`Hitting detail endpoint → ${detailPath}`);
+
+  // Step 1: detail request (to get session token)
+  const detailUrl = `${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(detailPath)}`;
+  const detailResp = await fetch(proxied(detailUrl), {
+    headers: {
+      "Accept": "application/json",
+      "Origin": SFLIX,
+      "Referer": `${SFLIX}/spa/videoPlayPage/movies/${detailPath}`,
+      "x-client-info": JSON.stringify({ timezone: "Asia/Dhaka" }),
+      "x-source": "",
+    }
+  });
+  if (!detailResp.ok) throw new Error(`Detail endpoint HTTP ${detailResp.status}`);
+  const detailData = await detailResp.json();
+
+  if (detailData.code !== 0) throw new Error("Detail API error: " + (detailData.message || detailData.code));
+
+  // Extract cookies from response headers if possible (may not work in browser due to httpOnly)
+  // We'll attempt to read Set-Cookie; in browsers this is blocked but we try anyway
+  let token = "";
+  const setCookie = detailResp.headers.get("set-cookie") || "";
+  const tokenMatch = setCookie.match(/token=([^;]+)/);
+  if (tokenMatch) token = tokenMatch[1];
+
+  // Fallback: check if token appears in data body (some APIs embed it)
+  token = token || detailData?.data?.token || detailData?.token || "";
+
+  if (!token) {
+    appendLog("Session token not accessible (browser httpOnly cookie restriction)", "warn");
+    appendLog("Attempting stream request without explicit token …", "warn");
+  } else {
+    appendLog(`Session token acquired (${token.slice(0,12)}…)`, "ok");
+  }
+
+  // Step 2: pick language
+  const dubs = detailData?.data?.subject?.dubs || [];
+  let chosenPath = detailPath;
+  let chosenId   = subjectId;
+
+  const langPriority = [
+    { code: "en", dub: true },
+    { code: "en", dub: false },
+    { code: "hi", dub: true },
+    { code: "hi", dub: false },
+  ];
+
+  for (const { code, dub } of langPriority) {
+    const match = dubs.find(d => d.lanCode === code && (!dub || d.type === 0));
+    if (match) {
+      appendLog(`Language: [${match.lanCode}] ${match.lanName} (${match.type === 0 ? "dub" : "sub"})`, "ok");
+      chosenId   = String(match.subjectId);
+      chosenPath = match.detailPath;
+      // refresh detail for new path
+      try {
+        await fetch(proxied(`${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(chosenPath)}`), {
+          headers: { "Origin": SFLIX, "Referer": `${SFLIX}/spa/videoPlayPage/movies/${detailPath}` }
+        });
+      } catch (_) { /* best effort */ }
+      break;
+    }
+  }
+
+  if (!dubs.length) appendLog("Language: original");
+
+  // Step 3: stream request
+  appendLog(`Requesting stream for subjectId=${chosenId} …`);
+  const mb = encodeURIComponent(JSON.stringify(token));
+  const playParams = new URLSearchParams({
+    subjectId: chosenId, se: "0", ep: "0",
+    detailPath: chosenPath, streamSignType: "1",
+  });
+  const playUrl = `${SFLIX}/wefeed-h5api-bff/subject/play?${playParams}`;
+
+  const playResp = await fetch(proxied(playUrl), {
+    headers: {
+      "Accept": "application/json",
+      "Authorization": `Bearer ${token}`,
+      "Cookie": `mb_token=${mb}`,
+      "Origin": SFLIX,
+      "Referer": `${SFLIX}/spa/videoPlayPage/movies/${chosenPath}?id=${chosenId}&type=/movie/detail&lang=en`,
+      "x-source": "",
+    }
+  });
+
+  if (!playResp.ok) throw new Error(`Stream endpoint HTTP ${playResp.status}`);
+  const playData = await playResp.json();
+  const streams  = playData?.data?.streams || [];
+
+  if (!streams.length) throw new Error("No streams returned — movie may be VIP-locked or request quota reached");
+
+  const free = streams.filter(s => !s.vipLocked).length ? streams.filter(s => !s.vipLocked) : streams;
+  const best = free.reduce((a, b) => (parseInt(a.resolutions)||0) > (parseInt(b.resolutions)||0) ? a : b);
+
+  appendLog(`${free.length} stream(s) found`, "ok");
+  return { best, all: free };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RENDER RESULTS
+// ─────────────────────────────────────────────────────────────────────────────
+function renderResult(meta, hit, streamResult) {
+  document.getElementById("r-title").textContent = `${meta.title} (${meta.year})`;
+  document.getElementById("r-sub").textContent =
+    `${meta.runtime}min  ·  IMDb ${meta.rating ?? "N/A"}  ·  ${streamResult.all.length} stream${streamResult.all.length !== 1 ? "s" : ""}`;
+
+  const list = document.getElementById("stream-list");
+  list.innerHTML = "";
+
+  const sorted = [...streamResult.all].sort((a, b) =>
+    (parseInt(b.resolutions)||0) - (parseInt(a.resolutions)||0)
+  );
+
+  for (const s of sorted) {
+    const isBest = s.url === streamResult.best.url;
+    const item = document.createElement("div");
+    item.className = "stream-item" + (isBest ? " best" : "");
+
+    const res = s.resolutions ? `${s.resolutions}p` : "?p";
+    item.innerHTML = `
+      <span class="res-badge">${escHtml(res)}</span>
+      <span class="stream-url" title="${escHtml(s.url)}">${escHtml(s.url)}</span>
+      <button class="copy-btn" onclick="copyUrl(this, ${JSON.stringify(s.url)})">Copy</button>
+    `;
+    list.appendChild(item);
+  }
+
+  resultCard.classList.add("visible");
+}
+
+async function copyUrl(btn, url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = "Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+  } catch (_) {
+    // fallback
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+    btn.textContent = "Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MAIN ENTRY
+// ─────────────────────────────────────────────────────────────────────────────
+async function runExtract() {
+  const input = document.getElementById("tmdb-input").value.trim();
+  if (!input || !/^\d+$/.test(input)) {
+    showError("Please enter a valid numeric TMDB movie ID.");
+    return;
+  }
+
+  hideError();
+  resultCard.classList.remove("visible");
+  clearLog();
+  showTerminal();
+  setLoading(true);
+
+  try {
+    appendLog(`── StreamEx extraction started ──`, "head");
+
+    const meta = await getMeta(input);
+    const hit  = await nnSearch(meta.title, meta.year, meta.runtime);
+
+    if (!hit) {
+      appendLog(`Not found on NetNaija for "${meta.title}"`, "err");
+      throw new Error(`"${meta.title}" was not found on NetNaija. Try another TMDB ID.`);
+    }
+
+    appendLog(`NetNaija match: ${hit.title} → subjectId=${hit.subjectId}`);
+
+    const streamResult = await getStream(hit.detailPath, String(hit.subjectId));
+
+    appendLog(`Best stream: [${streamResult.best.resolutions}p] ${streamResult.best.codecName || ""}`, "ok");
+    appendLog(`── Extraction complete ──`, "head");
+
+    renderResult(meta, hit, streamResult);
+
+  } catch (err) {
+    appendLog(err.message, "err");
+    showError(err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Allow Enter key in input
+document.getElementById("tmdb-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") runExtract();
+});
 </script>
 </body>
 </html>
