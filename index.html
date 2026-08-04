@@ -96,6 +96,47 @@
   .hero h1 em { font-style: normal; color: var(--gold); }
   .hero p { margin-top: 10px; font-size: 0.9rem; color: var(--muted); line-height: 1.6; max-width: 480px; }
 
+  .worker-config {
+    background: rgba(200,169,110,0.06);
+    border: 1px solid rgba(200,169,110,0.22);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .worker-config-row { display: flex; gap: 10px; align-items: center; }
+  .worker-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .worker-input {
+    flex: 1;
+    background: var(--card);
+    border: 1px solid rgba(200,169,110,0.3);
+    border-radius: 7px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .worker-input:focus { border-color: var(--gold); }
+  .worker-input::placeholder { color: var(--muted); }
+  .worker-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+  .worker-hint a { color: var(--gold-dim); }
+  .worker-hint a:hover { color: var(--gold); }
+  .worker-status { font-family: var(--mono); font-size: 0.7rem; }
+  .worker-status.ok   { color: var(--success); }
+  .worker-status.warn { color: var(--warn); }
+
   .input-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -343,6 +384,7 @@
     .input-row { flex-direction: column; }
     .btn-extract { width: 100%; justify-content: center; }
     footer { flex-direction: column; gap: 6px; align-items: flex-start; }
+    .worker-config-row { flex-direction: column; align-items: flex-start; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -369,14 +411,29 @@
     </svg>
   </div>
   <div class="logo-text">Stream<span>Ex</span></div>
-  <div class="header-badge">v2.0 · multi-proxy</div>
+  <div class="header-badge">v2.1 · cf-worker</div>
 </header>
 
 <main>
   <div class="hero">
     <div class="hero-eyebrow">// movie stream extractor</div>
     <h1>Extract <em>direct streams</em><br>from any TMDB movie</h1>
-    <p>Paste a TMDB movie ID to resolve metadata, search NetNaija, and pull direct video stream URLs — automatic proxy fallback included.</p>
+    <p>Paste a TMDB movie ID to resolve metadata, search NetNaija, and pull direct video stream URLs.</p>
+  </div>
+
+  <!-- Worker URL config -->
+  <div class="worker-config">
+    <div class="worker-config-row">
+      <span class="worker-label">⚡ CF Worker URL</span>
+      <input class="worker-input" id="worker-url-input"
+        placeholder="https://streamex-proxy.YOUR-SUBDOMAIN.workers.dev"
+        autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="worker-hint">
+      Deploy <code>worker.js</code> to <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Workers</a> (free tier) and paste the <code>*.workers.dev</code> URL above.
+      Falls back to public CORS proxies if left empty.
+      <span class="worker-status" id="worker-status"></span>
+    </div>
   </div>
 
   <div class="input-card">
@@ -424,7 +481,7 @@
 </main>
 
 <footer>
-  <span>StreamEx · static frontend · multi-proxy fallback</span>
+  <span>StreamEx · static frontend · CF Worker proxy</span>
   <span>powered by <a href="https://www.themoviedb.org" target="_blank">TMDB</a> · <a href="https://www.omdbapi.com" target="_blank">OMDb</a> · NetNaija</span>
 </footer>
 
@@ -444,26 +501,21 @@ const H5    = "https://h5-api.aoneroom.com";
 const NN    = "https://netnaija.film";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MULTI-PROXY ENGINE
-//  Each proxy wraps a URL differently. We try them in order; on failure we
-//  advance to the next. The active proxy index is remembered per-session.
+//  PROXY CONFIG — CF Worker is inserted first if user supplies a URL
 // ─────────────────────────────────────────────────────────────────────────────
-const PROXIES = [
-  {
-    name: "allorigins",
-    wrap: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    // allorigins only supports GET; for POST we use the /post endpoint which
-    // is unavailable, so we skip it for POST calls automatically.
-    supportsPost: false,
-  },
+const FALLBACK_PROXIES = [
   {
     name: "corsproxy.io",
     wrap: url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     supportsPost: true,
   },
   {
+    name: "allorigins",
+    wrap: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    supportsPost: false,
+  },
+  {
     name: "cors.sh",
-    // cors.sh needs an Origin header or a key; free tier still usually works
     wrap: url => `https://proxy.cors.sh/${url}`,
     supportsPost: true,
     extraHeaders: { "x-cors-api-key": "temp_" },
@@ -480,8 +532,41 @@ const PROXIES = [
   },
 ];
 
-let activeProxyIdx = 0;    // which proxy we're currently on
-let proxyPillEls   = [];   // DOM elements for proxy pills
+let PROXIES = [...FALLBACK_PROXIES];
+let activeProxyIdx = 0;
+let proxyPillEls   = [];
+
+function getWorkerUrl() {
+  return (document.getElementById("worker-url-input").value || "").trim().replace(/\/$/, "");
+}
+
+function rebuildProxies() {
+  const wUrl = getWorkerUrl();
+  if (wUrl) {
+    PROXIES = [
+      {
+        name: "cf-worker",
+        wrap: url => `${wUrl}/?url=${encodeURIComponent(url)}`,
+        supportsPost: true,
+        isCfWorker: true,
+      },
+      ...FALLBACK_PROXIES,
+    ];
+  } else {
+    PROXIES = [...FALLBACK_PROXIES];
+  }
+}
+
+// Update the hint badge next to the worker URL input
+document.getElementById("worker-url-input").addEventListener("input", () => {
+  const wUrl = getWorkerUrl();
+  const st   = document.getElementById("worker-status");
+  if (!wUrl) { st.textContent = ""; st.className = "worker-status"; return; }
+  if (!wUrl.startsWith("https://")) {
+    st.textContent = " ✗ must start with https://"; st.className = "worker-status warn"; return;
+  }
+  st.textContent = " ✓ will use as primary proxy"; st.className = "worker-status ok";
+});
 
 function buildProxyUI() {
   const strip = document.getElementById("proxy-status");
@@ -498,29 +583,29 @@ function buildProxyUI() {
   strip.classList.add("visible");
 }
 
-function markProxy(idx, state) {  // state: "active"|"ok"|"fail"
+function markProxy(idx, state) {
   for (const [i, el] of proxyPillEls.entries()) {
-    el.className = "proxy-pill" + (i === idx ? ` ${state}` : (el.className.includes("ok") || el.className.includes("fail") ? (el.className.includes("ok") ? " ok" : " fail") : ""));
+    const cur = el.className.replace("proxy-pill","").trim();
+    el.className = "proxy-pill" +
+      (i === idx ? ` ${state}` : (cur === "ok" || cur === "fail" ? ` ${cur}` : ""));
   }
 }
 
-// Core fetch-with-proxy-fallback. Tries each proxy in sequence.
-// For POST requests, proxies that don't support POST are skipped.
+// Core fetch-with-proxy-fallback
 async function proxiedFetch(url, options = {}) {
   const isPost = options.method && options.method.toUpperCase() === "POST";
-  let lastErr = null;
+  let lastErr  = null;
 
-  // We start at the current activeProxyIdx and wrap around
   for (let offset = 0; offset < PROXIES.length; offset++) {
-    const idx = (activeProxyIdx + offset) % PROXIES.length;
+    const idx   = (activeProxyIdx + offset) % PROXIES.length;
     const proxy = PROXIES[idx];
 
     if (isPost && !proxy.supportsPost) {
-      appendLog(`  [proxy] ${proxy.name} skipped (no POST support)`, "warn");
+      appendLog(`  [proxy] ${proxy.name} skipped (no POST)`, "warn");
       continue;
     }
 
-    const wrappedUrl = proxy.wrap(url);
+    const wrappedUrl    = proxy.wrap(url);
     const mergedHeaders = { ...(options.headers || {}), ...(proxy.extraHeaders || {}) };
 
     try {
@@ -528,9 +613,8 @@ async function proxiedFetch(url, options = {}) {
       markProxy(idx, "active");
       const resp = await fetch(wrappedUrl, { ...options, headers: mergedHeaders });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      // success — remember this proxy for next call
       if (idx !== activeProxyIdx) {
-        appendLog(`  [proxy] switching to ${proxy.name}`, "ok");
+        appendLog(`  [proxy] switched to ${proxy.name}`, "ok");
         markProxy(activeProxyIdx, "fail");
       }
       activeProxyIdx = idx;
@@ -645,7 +729,7 @@ function titleScore(a, b) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  NETNAIJA SEARCH — POST through proxies that support it
+//  NETNAIJA SEARCH
 // ─────────────────────────────────────────────────────────────────────────────
 async function nnSearch(title, year, runtime) {
   appendLog(`Searching NetNaija for "${title}" (${year}) …`);
@@ -716,7 +800,6 @@ async function getStream(detailPath, subjectId) {
   if (!token) appendLog("Session token not in response body (may rely on httpOnly cookie)", "warn");
   else appendLog(`Token found in body (${token.slice(0,12)}…)`, "ok");
 
-  // Language selection
   const dubs = detailData?.data?.subject?.dubs || [];
   let chosenPath = detailPath;
   let chosenId   = subjectId;
@@ -740,13 +823,16 @@ async function getStream(detailPath, subjectId) {
   }
   if (!dubs.length) appendLog("Language: original");
 
-  // Stream request
   appendLog(`Requesting stream for subjectId=${chosenId} …`);
   const mb = encodeURIComponent(JSON.stringify(token));
   const playParams = new URLSearchParams({
     subjectId: chosenId, se:"0", ep:"0",
     detailPath: chosenPath, streamSignType:"1",
   });
+
+  // ── CRITICAL: play endpoint is on sflix.film, not h5-api ──────────────────
+  // Public proxies block this domain. The CF Worker handles it correctly by
+  // spoofing Origin/Referer to sflix.film itself.
   const playUrl = `${SFLIX}/wefeed-h5api-bff/subject/play?${playParams}`;
 
   const playResp = await proxiedFetch(playUrl, {
@@ -821,11 +907,14 @@ async function runExtract() {
   clearLog();
   showTerminal();
   setLoading(true);
-  activeProxyIdx = 0;   // reset proxy choice for each new extraction
+  activeProxyIdx = 0;
+  rebuildProxies();        // pick up any worker URL the user entered
   buildProxyUI();
 
   try {
     appendLog("── StreamEx extraction started ──", "head");
+    if (getWorkerUrl()) appendLog(`CF Worker: ${getWorkerUrl()}`, "ok");
+    else appendLog("No CF Worker URL — using public fallbacks", "warn");
 
     const meta = await getMeta(input);
     const hit  = await nnSearch(meta.title, meta.year, meta.runtime);
@@ -844,7 +933,10 @@ async function runExtract() {
     renderResult(meta, streamResult);
   } catch (err) {
     appendLog(err.message, "err");
-    showError(err.message + "\n\nIf all proxies failed, try running the page locally (file://) or behind a VPN.");
+    showError(err.message +
+      (getWorkerUrl()
+        ? "\n\nCF Worker is set but still failed — check the worker is deployed correctly."
+        : "\n\nDeploy worker.js to Cloudflare Workers and paste the URL above to fix this."));
   } finally {
     setLoading(false);
   }
