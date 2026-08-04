@@ -1,1 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MegaPlay Stream API</title>
+<style>
+  :root {
+    --bg:      #0d0f14;
+    --surface: #161921;
+    --border:  #252934;
+    --accent:  #6c8fff;
+    --accent2: #a78bff;
+    --green:   #3ddc84;
+    --red:     #ff5e5e;
+    --yellow:  #ffc542;
+    --text:    #e2e6f0;
+    --muted:   #7b8299;
+    --mono:    'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
+    --sans:    'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+  }
 
+  header {
+    width: 100%; max-width: 780px;
+    margin-bottom: 36px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .logo {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: grid; place-items: center; flex-shrink: 0;
+  }
+  .logo svg { width: 22px; height: 22px; fill: #fff; }
+  .brand h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+  .brand p  { font-size: .8rem; color: var(--muted); margin-top: 1px; }
+
+  .url-hint {
+    width: 100%; max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--muted);
+    margin-bottom: 28px;
+  }
+  .url-hint span.hl { color: var(--accent2); }
+
+  .search-wrap {
+    width: 100%; max-width: 780px;
+    display: flex; gap: 10px; margin-bottom: 32px;
+  }
+  .search-wrap input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .88rem;
+    padding: 11px 16px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap button {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 8px;
+    color: #fff; font-size: .88rem; font-weight: 600;
+    padding: 11px 22px; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .search-wrap button:hover { opacity: .85; }
+
+  .card {
+    width: 100%; max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    display: none;
+  }
+  .card-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: .72rem; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-blue   { background: var(--accent); }
+  .dot-green  { background: var(--green); }
+  .dot-yellow { background: var(--yellow); }
+
+  /* ── Log ── */
+  #log {
+    padding: 16px 20px;
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.75;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .log-line { display: flex; gap: 10px; }
+  .log-ts   { color: var(--muted); flex-shrink: 0; user-select: none; }
+  .log-ok   { color: var(--green); }
+  .log-err  { color: var(--red); }
+  .log-info { color: var(--text); }
+  .log-warn { color: var(--yellow); }
+
+  /* ── Meta ── */
+  .meta-inner { padding: 18px 20px; display: flex; gap: 20px; align-items: flex-start; }
+  .poster {
+    width: 70px; height: 105px;
+    border-radius: 6px; object-fit: cover;
+    background: var(--border); flex-shrink: 0;
+  }
+  .meta-info h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+  .meta-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; font-size: .72rem;
+    font-family: var(--mono); padding: 3px 8px; color: var(--muted);
+  }
+  .tag.hi { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Streams ── */
+  .stream-list { padding: 12px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .stream-row {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 14px;
+    transition: border-color .15s;
+  }
+  .stream-row.best { border-color: var(--green); }
+  .stream-row:hover { border-color: var(--accent); }
+  .res-badge {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; font-family: var(--mono);
+    font-size: .75rem; font-weight: 700;
+    padding: 3px 9px; color: var(--accent2);
+    min-width: 52px; text-align: center; flex-shrink: 0;
+  }
+  .stream-row.best .res-badge {
+    background: rgba(61,220,132,.1);
+    border-color: var(--green); color: var(--green);
+  }
+  .stream-url {
+    flex: 1; font-family: var(--mono);
+    font-size: .7rem; color: var(--muted); word-break: break-all;
+  }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 6px; color: var(--muted);
+    font-size: .72rem; padding: 5px 10px;
+    cursor: pointer; transition: all .15s; flex-shrink: 0;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── JSON ── */
+  #json-out {
+    padding: 16px 20px;
+    font-family: var(--mono); font-size: .75rem;
+    line-height: 1.6; color: #9fbaff;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 380px; overflow-y: auto;
+  }
+
+  /* ── Idle ── */
+  #idle {
+    text-align: center; padding: 60px 20px;
+    color: var(--muted); font-size: .9rem; line-height: 1.8;
+  }
+  #idle kbd {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 7px;
+    font-family: var(--mono); font-size: .8rem;
+  }
+
+  /* ── Loading overlay ── */
+  #loading-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transform: scaleX(0); transform-origin: left;
+    transition: transform .4s ease;
+    z-index: 999;
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="loading-bar"></div>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+  </div>
+  <div class="brand">
+    <h1>MegaPlay Stream API</h1>
+    <p>Direct stream extractor · TMDB ID via URL path</p>
+  </div>
+</header>
+
+<div class="url-hint">
+  <span class="hl">https://srtfile.github.io/megaplay_buzz_iframe_player/<strong>280</strong></span>
+  &nbsp;→&nbsp; auto-fetches streams for TMDB ID 280
+</div>
+
+<div class="search-wrap">
+  <input id="tmdb-input" type="number" placeholder="Or enter TMDB ID manually…" />
+  <button onclick="runFromInput()">Extract</button>
+</div>
+
+<!-- Log -->
+<div class="card" id="log-card">
+  <div class="card-head"><div class="dot dot-blue"></div> Processing Log</div>
+  <div id="log"></div>
+</div>
+
+<!-- Meta -->
+<div class="card" id="meta-card">
+  <div class="card-head"><div class="dot dot-yellow"></div> Movie Metadata</div>
+  <div class="meta-inner">
+    <img id="poster" class="poster" src="" alt="poster" />
+    <div class="meta-info">
+      <h2 id="meta-title">—</h2>
+      <div class="meta-tags" id="meta-tags"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Streams -->
+<div class="card" id="streams-card">
+  <div class="card-head"><div class="dot dot-green"></div> Available Streams</div>
+  <div class="stream-list" id="stream-list"></div>
+</div>
+
+<!-- JSON -->
+<div class="card" id="json-card">
+  <div class="card-head"><div class="dot dot-blue"></div> JSON Response</div>
+  <pre id="json-out"></pre>
+</div>
+
+<!-- Idle -->
+<div id="idle">
+  Paste a URL like &nbsp;<kbd>/megaplay_buzz_iframe_player/280</kbd>&nbsp; in your browser,<br/>
+  or type a TMDB ID above and hit <kbd>Extract</kbd>.
+</div>
+
+<script>
+/* ── Config ── */
+const TMDB_KEY = "6fad3f86b8452ee232deb7977d7dcf58";
+const OMDB_KEY = "2cd51b5b";
+const NN_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjcwNjg3NzgxMzIyMzY4MjE3NDQsImF0cCI6MywiZXh0IjoiMTc4NTc1NzQxNCIsImV4cCI6MTc5MzUzMzQxNCwiaWF0IjoxNzg1NzU3MTE0fQ.2cQ9H7rY1HOTmbjcXNHoULguJ-YQfZjjsZ3YYI4jdSk";
+const SFLIX    = "https://sflix.film";
+const H5       = "https://h5-api.aoneroom.com";
+const NN       = "https://netnaija.film";
+const CORS     = "https://corsproxy.io/?url=";
+
+/* ── Progress bar ── */
+const bar = document.getElementById("loading-bar");
+let _prog = 0;
+function setProgress(p) {
+  _prog = p;
+  bar.style.transform = `scaleX(${p / 100})`;
+  if (p >= 100) setTimeout(() => { bar.style.opacity = "0"; }, 400);
+  else bar.style.opacity = "1";
+}
+
+/* ── Logging ── */
+function log(msg, type = "info") {
+  const lc = document.getElementById("log-card");
+  const el = document.getElementById("log");
+  lc.style.display = "block";
+  const ts   = new Date().toISOString().slice(11,19);
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-${type}">${escHtml(msg)}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function resetUI() {
+  document.getElementById("log").innerHTML = "";
+  ["log-card","meta-card","streams-card","json-card"].forEach(id =>
+    document.getElementById(id).style.display = "none"
+  );
+  document.getElementById("idle").style.display = "none";
+  setProgress(0);
+}
+
+/* ── Fetch helpers ── */
+async function fetchProxy(url, opts = {}) {
+  const r = await fetch(CORS + encodeURIComponent(url), opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ── String similarity (SequenceMatcher approximation) ── */
+function seqRatio(a, b) {
+  if (!a.length || !b.length) return 0;
+  const dp = [];
+  for (let i = 0; i <= a.length; i++) dp[i] = new Uint16Array(b.length + 1);
+  let best = 0;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : 0;
+      if (dp[i][j] > best) best = dp[i][j];
+    }
+  return (2 * best) / (a.length + b.length);
+}
+function norm(t) {
+  return t.toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+}
+function titleScore(a, b) {
+  const na = norm(a);
+  const nb = norm(b.replace(/\[.*?\]|\(.*?\)/g,""));
+  if (na === nb) return 100;
+  const r1 = seqRatio(na, nb);
+  const r2 = seqRatio([...na.split(" ")].sort().join(" "), [...nb.split(" ")].sort().join(" "));
+  const r3 = nb.includes(na) ? 0.92 : 0;
+  const r4 = nb.startsWith(na) ? 0.95 : 0;
+  return Math.round(Math.max(r1, r2, r3, r4) * 100);
+}
+
+/* ══════════════════════════════════════════════
+   STEP 1 — TMDB + OMDB metadata
+══════════════════════════════════════════════ */
+async function getMeta(tmdbId) {
+  const d = await fetchProxy(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`);
+  const title    = d.title || d.original_title || "";
+  const year     = (d.release_date || "").slice(0, 4);
+  const runtime  = d.runtime || 0;
+  const imdbId   = d.imdb_id || "";
+  const poster   = d.poster_path ? `https://image.tmdb.org/t/p/w185${d.poster_path}` : "";
+  const overview = d.overview || "";
+  let rating = null;
+  if (imdbId) {
+    try {
+      const o = await fetchProxy(`https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_KEY}`);
+      if (o.Response === "True" && o.imdbRating && o.imdbRating !== "N/A")
+        rating = parseFloat(o.imdbRating);
+    } catch(_) {}
+  }
+  return { title, year, runtime, imdbId, poster, overview, rating };
+}
+
+/* ══════════════════════════════════════════════
+   STEP 2 — NetNaija search
+══════════════════════════════════════════════ */
+async function nnSearch(title, year, runtime) {
+  for (let page = 1; page <= 5; page++) {
+    let resp;
+    try {
+      resp = await fetchProxy(`${H5}/wefeed-h5api-bff/subject/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type":   "application/json",
+          "Accept":         "application/json",
+          "Authorization":  `Bearer ${NN_TOKEN}`,
+          "Origin":         NN,
+          "Referer":        `${NN}/`,
+          "x-request-lang": "en",
+          "x-client-info":  '{"timezone":"UTC"}',
+          "User-Agent":     "Mozilla/5.0",
+        },
+        body: JSON.stringify({ keyword: title, page, perPage: 24, subjectType: 0 }),
+      });
+    } catch(e) { log(`Search page ${page} failed: ${e.message}`, "warn"); break; }
+
+    for (const it of (resp?.data?.items || [])) {
+      if (!it.detailPath) continue;
+      if ((it.releaseDate || "").slice(0,4) !== year) continue;
+      const rt = Math.floor((it.duration || 0) / 60);
+      if (!rt || Math.abs(runtime - rt) > 2) continue;
+      if (titleScore(title, it.title || "") < 70) continue;
+      return it;
+    }
+    if (!resp?.data?.pager?.hasMore) break;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return null;
+}
+
+/* ══════════════════════════════════════════════
+   STEP 3 — Stream extraction
+══════════════════════════════════════════════ */
+async function getStream(detailPath, subjectId) {
+  const commonHdr = {
+    "Accept":          "application/json",
+    "Authorization":   `Bearer ${NN_TOKEN}`,
+    "x-client-info":   '{"timezone":"Asia/Dhaka"}',
+    "x-source":        "",
+  };
+
+  // Detail fetch
+  const detail = await fetchProxy(
+    `${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(detailPath)}`,
+    { headers: { ...commonHdr, "Origin": SFLIX, "Referer": `${SFLIX}/spa/videoPlayPage/movies/${detailPath}` } }
+  );
+  if (detail.code !== 0) throw new Error("Detail fetch failed: " + JSON.stringify(detail));
+
+  // Language selection
+  const dubs = detail?.data?.subject?.dubs || [];
+  let chosenDub = null;
+  for (const [lang, needDub] of [["en",true],["en",false],["hi",true],["hi",false]]) {
+    chosenDub = dubs.find(d => d.lanCode === lang && (!needDub || d.type === 0)) || null;
+    if (chosenDub) break;
+  }
+
+  let activeDetailPath = detailPath;
+  let activeSid        = subjectId;
+  let activeToken      = NN_TOKEN;
+
+  if (chosenDub) {
+    log(`  Language: [${chosenDub.lanCode}] ${chosenDub.lanName} (${chosenDub.type === 0 ? "dub" : "sub"})`, "ok");
+    activeSid        = String(chosenDub.subjectId);
+    activeDetailPath = chosenDub.detailPath;
+    try {
+      const r2 = await fetchProxy(
+        `${H5}/wefeed-h5api-bff/detail?detailPath=${encodeURIComponent(activeDetailPath)}`,
+        { headers: { ...commonHdr, "Origin": SFLIX, "Referer": `${SFLIX}/spa/videoPlayPage/movies/${detailPath}` } }
+      );
+      activeToken = r2?.data?.token || r2?.token || activeToken;
+    } catch(_) {}
+  } else {
+    log("  Language: original", "info");
+  }
+
+  // Stream request
+  const playUrl = `${SFLIX}/wefeed-h5api-bff/subject/play`
+    + `?subjectId=${activeSid}&se=0&ep=0`
+    + `&detailPath=${encodeURIComponent(activeDetailPath)}&streamSignType=1`;
+
+  const playResp = await fetchProxy(playUrl, {
+    headers: {
+      ...commonHdr,
+      "Authorization": `Bearer ${activeToken}`,
+      "Origin":  SFLIX,
+      "Referer": `${SFLIX}/spa/videoPlayPage/movies/${activeDetailPath}?id=${activeSid}&type=/movie/detail&lang=en`,
+    }
+  });
+
+  const streams = playResp?.data?.streams || [];
+  if (!streams.length) throw new Error("No streams returned (VIP-locked or rate-limited)");
+
+  const free = streams.filter(s => !s.vipLocked);
+  const pool = (free.length ? free : streams)
+    .sort((a,b) => (parseInt(b.resolutions)||0) - (parseInt(a.resolutions)||0));
+
+  return {
+    best: { url: pool[0].url, resolution: pool[0].resolutions, codec: pool[0].codecName },
+    all:  pool.map(s => ({ url: s.url, resolution: s.resolutions, codec: s.codecName, vipLocked: !!s.vipLocked }))
+  };
+}
+
+/* ══════════════════════════════════════════════
+   Main pipeline
+══════════════════════════════════════════════ */
+async function extract(tmdbId) {
+  resetUI();
+  document.getElementById("log-card").style.display = "block";
+  setProgress(5);
+
+  const result = { tmdb_id: tmdbId, status: "error", meta: null, streams: [] };
+
+  try {
+    log(`🎬 TMDB ID: ${tmdbId} — fetching metadata…`, "info");
+    setProgress(15);
+    const meta = await getMeta(tmdbId);
+    result.meta = meta;
+    log(`✅ ${meta.title} (${meta.year})  ${meta.runtime}min  ⭐${meta.rating ?? "N/A"}`, "ok");
+    renderMeta(meta);
+    setProgress(35);
+
+    log(`🔍 Searching NetNaija for "${meta.title}"…`, "info");
+    const hit = await nnSearch(meta.title, meta.year, meta.runtime);
+    if (!hit) throw new Error("Movie not found on NetNaija");
+    setProgress(60);
+
+    const dp  = hit.detailPath;
+    const sid = String(hit.subjectId);
+    log(`✅ Matched: "${hit.title}"  →  ${SFLIX}/videoPlayPage/${dp}?id=${sid}`, "ok");
+    result.netnaija = { detailPath: dp, subjectId: sid, title: hit.title };
+
+    log(`📡 Extracting stream URLs…`, "info");
+    const streams = await getStream(dp, sid);
+    setProgress(90);
+
+    result.status  = "ok";
+    result.streams = streams.all;
+    result.best    = streams.best;
+
+    log(`✅ Best: [${streams.best.resolution}p] ${streams.best.codec || ""}`, "ok");
+    log(`✅ ${streams.all.length} stream(s) ready`, "ok");
+    renderStreams(streams);
+    setProgress(100);
+
+  } catch(e) {
+    result.error = e.message;
+    log(`❌ ${e.message}`, "err");
+    setProgress(100);
+    console.error(e);
+  }
+
+  renderJSON(result);
+  return result;
+}
+
+/* ══════════════════════════════════════════════
+   Render helpers
+══════════════════════════════════════════════ */
+function renderMeta(meta) {
+  const card = document.getElementById("meta-card");
+  card.style.display = "block";
+  document.getElementById("meta-title").textContent = `${meta.title} (${meta.year})`;
+
+  const poster = document.getElementById("poster");
+  if (meta.poster) { poster.src = meta.poster; poster.style.display = "block"; }
+  else poster.style.display = "none";
+
+  const tags = document.getElementById("meta-tags");
+  tags.innerHTML = "";
+  const tag = (label, hi = false) => {
+    const t = document.createElement("span");
+    t.className = `tag${hi ? " hi" : ""}`;
+    t.textContent = label;
+    tags.appendChild(t);
+  };
+  if (meta.runtime) tag(`${meta.runtime} min`);
+  if (meta.rating)  tag(`⭐ ${meta.rating}`, true);
+  if (meta.year)    tag(meta.year);
+  if (meta.imdbId)  tag(meta.imdbId);
+}
+
+function renderStreams(streams) {
+  const card = document.getElementById("streams-card");
+  card.style.display = "block";
+  const list = document.getElementById("stream-list");
+  list.innerHTML = "";
+  const bestUrl = streams.best.url;
+
+  streams.all.forEach(s => {
+    const isBest = s.url === bestUrl;
+    const row = document.createElement("div");
+    row.className = `stream-row${isBest ? " best" : ""}`;
+
+    const badge = document.createElement("div");
+    badge.className = "res-badge";
+    badge.textContent = `${s.resolution || "?"}p`;
+
+    const urlEl = document.createElement("div");
+    urlEl.className = "stream-url";
+    urlEl.textContent = s.url;
+
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = "Copy";
+    btn.onclick = () => copyText(s.url, btn);
+
+    row.appendChild(badge);
+    row.appendChild(urlEl);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
+}
+
+function renderJSON(result) {
+  const card = document.getElementById("json-card");
+  card.style.display = "block";
+  document.getElementById("json-out").textContent = JSON.stringify(result, null, 2);
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = orig, 1500);
+  } catch(_) {
+    btn.textContent = "Failed";
+  }
+}
+
+/* ══════════════════════════════════════════════
+   Entry points
+══════════════════════════════════════════════ */
+function runFromInput() {
+  const val = document.getElementById("tmdb-input").value.trim();
+  if (!val || isNaN(val)) return;
+  extract(parseInt(val, 10));
+}
+
+document.getElementById("tmdb-input")
+  .addEventListener("keydown", e => { if (e.key === "Enter") runFromInput(); });
+
+/* ── Auto-detect TMDB ID from any URL path ──
+   Matches: /megaplay_buzz_iframe_player/280
+            /anything/280
+            /280
+   The key is the GitHub Pages 404 trick:
+   any path that isn't a real file lands here,
+   so we just grab the last numeric segment.    */
+(function autoDetect() {
+  const match = location.pathname.match(/\/(\d+)\/?$/);
+  if (match) {
+    const id = parseInt(match[1], 10);
+    document.getElementById("tmdb-input").value = id;
+    document.getElementById("idle").style.display = "none";
+    extract(id);
+  }
+})();
+</script>
+</body>
+</html>
